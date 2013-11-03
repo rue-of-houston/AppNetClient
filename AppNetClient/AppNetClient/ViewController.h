@@ -7,12 +7,28 @@
 //
 
 #import <UIKit/UIKit.h>
+#import <QuartzCore/QuartzCore.h>
 #import "CustomCell.h"
 
-@interface ViewController : UIViewController <UITableViewDataSource, UITableViewDelegate>
+@interface ViewController : UIViewController <UIScrollViewDelegate, UITableViewDataSource, UITableViewDelegate, NSURLConnectionDelegate>
 {
     IBOutlet UITableView *postTable;
+    NSMutableData *timelineData;
+    NSDictionary *timelineJSON;
+    NSURLConnection *connectionManager;
+    NSMutableDictionary *userImages;
+    NSMutableDictionary *imageUrls;
+    NSMutableArray *timelineDetails;
+    int currentImage;
+    int connectionType;
+    NSMutableData *avatarData;
+    NSString *currentPoster;
+    BOOL doRefresh;
+    int textHeight;
     
 }
+
+- (void)makeRequest:(NSString *) urlString;
+- (void)extractJSONCellData;
 
 @end

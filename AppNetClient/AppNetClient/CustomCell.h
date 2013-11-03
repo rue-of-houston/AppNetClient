@@ -12,6 +12,6 @@
 
 @property (nonatomic, strong) IBOutlet UILabel *username;
 @property (nonatomic, strong) IBOutlet UILabel *postText;
-@property (nonatomic, strong) IBOutlet UIImageView *image;
+@property (nonatomic, strong) IBOutlet UIImageView *imageView;
 
 @end
