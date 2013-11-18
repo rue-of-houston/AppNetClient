@@ -7,6 +7,7 @@
 //
 
 #import "ViewController.h"
+#import "SecondViewController.h"
 
 @interface ViewController ()
 
@@ -26,11 +27,14 @@ typedef enum {
     
     imageUrls = [[NSMutableDictionary alloc] init];
     userImages = [[NSMutableDictionary alloc] init];
+    storyBoard = [UIStoryboard storyboardWithName:@"Main" bundle:nil];
     
     connectionType = LOADING_TIMELINE;
     
+    alert = [[UserAlerts alloc] init];
+    
     // retrieve the timelined data
-    [self makeRequest:@"https://alpha-api.app.net/stream/0/posts/stream/global"];
+   [self makeRequest:@"https://alpha-api.app.net/stream/0/posts/stream/global"];
 }
 
 - (void)didReceiveMemoryWarning
@@ -42,7 +46,40 @@ typedef enum {
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section
 {
     // return a cell for each of the objects held in the array
-    return [timelineDetails count];
+    int timeLineCount = 0;
+    
+    if (timelineDetails != nil)
+    {
+        timeLineCount = (int) [timelineDetails count];
+    }
+    
+    return timeLineCount;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    // initialize the details view from the storyboard
+    SecondViewController *detailsView = [storyBoard instantiateViewControllerWithIdentifier:@"secondView"];
+    
+    if (detailsView != nil)
+    {
+        // gets the userdata for the clicked table cell
+        NSDictionary *userData = [timelineDetails objectAtIndex:indexPath.row];
+        NSString *username = [userData objectForKey:@"poster_username"];
+        NSString *postDate = [userData objectForKey:@"post_date"];
+        NSString *postText = [userData objectForKey:@"post_text"];
+        
+        // set the data to the initialized view
+        detailsView.user = username;
+        detailsView.date = postDate;
+        detailsView.post = postText;
+        detailsView.image = [userImages objectForKey:username];
+        
+        
+        [self presentViewController:detailsView animated:YES completion:^{
+            
+        }];
+    }
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
@@ -69,59 +106,66 @@ typedef enum {
     
     NSString *username = [[timelineDetails objectAtIndex:indexPath.row] objectForKey:@"poster_username"];
     NSString *post = [[timelineDetails objectAtIndex:indexPath.row] objectForKey:@"post_text"];
-    CGRect frame = [post boundingRectWithSize:CGSizeMake(227.0f, 53.0f) options:NSStringDrawingUsesLineFragmentOrigin attributes:nil context:nil];
-    
-    textHeight = frame.size.height;
+    NSString *date = [[timelineDetails objectAtIndex:indexPath.row] objectForKey:@"post_date"];
     
     // set the cell data
     cell.username.text = username;
     cell.postText.text = post;
-    cell.imageView.image = [userImages objectForKey:username];
+    [cell.postText sizeToFit];
+    cell.date.text = date;
+    cell.cellImage.image = [userImages objectForKey:username];
     
     // round the corners of the images
-    CALayer *layer = [cell.imageView layer];
+    CALayer *layer = [cell.cellImage layer];
     [layer setMasksToBounds:YES];
     [layer setCornerRadius:10.0f];
     [layer setBorderColor:[[UIColor lightGrayColor] CGColor]];
     [layer setBorderWidth:1.25f];
 
-    
     // return the table cell
     return cell;
 }
 
-- (void)makeRequest:(NSString *) urlString
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath
 {
-    // create the url object pointing to the timeline data
-    NSURL *url = [NSURL URLWithString: urlString];
+    int cellHeight = 80;
     
-    if (connectionManager)
-    {
-        // stop any active requests
-        [connectionManager cancel];
-    }
+    return cellHeight;
+}
+
+- (void)scrollViewDidEndDragging:(UIScrollView *)scrollView willDecelerate:(BOOL)decelerate
+{
     
-    // verify that the url is valid
-    if (url != nil)
+    // grab the scroll offset
+    float offset = scrollView.contentOffset.y;
+    
+    // if the scroll is decelerating and the pull 90pts from top, do a refresh
+    if (decelerate && offset <= -90.0f)
     {
-        // create a request object from the url
-        NSURLRequest *request = [[NSURLRequest alloc] initWithURL:url];
+        connectionType = LOADING_TIMELINE;
         
-        // verify that the request is valid
-        if (request != nil)
-        {
-            // create a new connection from the request object
-            connectionManager = [[NSURLConnection alloc] initWithRequest:request delegate:self];
-            
-            // verify that the connection object is valid
-            if (connectionManager != nil)
-            {
-                // start the connection
-                [connectionManager start];
-            }
-        }
+        // retrieve the timelined data
+        [self makeRequest:@"https://alpha-api.app.net/stream/0/posts/stream/global"];
     }
+}
+
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView
+{
+    // grab the scroll offset
+    float offset = scrollView.contentOffset.y;
     
+    NSString *releaseText = @"RELEASE TO REFRESH";
+    NSString *pullText = @"PULL TO REFRESH";
+    
+    // if the scroll is decelerating and the pull 90pts from top, do a refresh
+    if (offset <= -90.0f && [pullToRefreshLabel.text isEqualToString:pullText])
+    {
+        pullToRefreshLabel.text = releaseText;
+    }
+    else if (offset > -90.0f && [pullToRefreshLabel.text isEqualToString:releaseText])
+    {
+        pullToRefreshLabel.text = pullText;
+    }
 }
 
 - (void)connection:(NSURLConnection *)connection didReceiveData:(NSData *)data
@@ -172,15 +216,13 @@ typedef enum {
         // set the connection loading type to allow for dynamic loading of user avatars
         connectionType = LOADING_IMAGES;
         
-        // call the method to retrieve the table data from the json returned
-        [self extractJSONCellData];
+        [self sortJSON];
         
     }
     else if (connectionType == LOADING_IMAGES)
     {
         UIImage *avatar = [UIImage imageWithData:avatarData];
 
-        
         if (avatar != nil)
         {
             // add the avatar image to dictionary of poster images
@@ -210,6 +252,19 @@ typedef enum {
         }
         else
         {
+            // dismiss the loading message
+            if (loadMsg != nil)
+            {
+                [loadMsg dismissWithClickedButtonIndex:0 animated:YES];
+                loadMsg = nil;
+            }
+            
+            if (pullToRefreshLabel.hidden)
+            {
+                pullToRefreshLabel.hidden = NO;
+            }
+            
+            // reload the table
             [postTable reloadData];
             
             currentImage = 0;
@@ -219,10 +274,125 @@ typedef enum {
     
 }
 
-- (void)extractJSONCellData
+- (void)connection:(NSURLConnection *)connection didFailWithError:(NSError *)error
+{
+    // dismiss the loading message
+    if (loadMsg != nil)
+    {
+        [loadMsg dismissWithClickedButtonIndex:0 animated:YES];
+        loadMsg = alert.makeShowAlert(@"Connection Error", @"Error fetching timeline. Please try again.", @"Cancel", @"Retry", YES, self, 99);
+        
+        NSLog(@"Error: %@", error);
+    }
+}
+
+- (void)makeRequest:(NSString *) urlString
+{
+    // display the loading message
+    if (loadMsg == nil)
+    {
+        loadMsg = alert.makeShowActivity(@"Please Wait", @"Loading your timeline...", NO, self);
+        
+        if (loadMsg != nil)
+        {
+            [loadMsg show];
+        }
+    }
+    
+    // create the url object pointing to the timeline data
+    NSURL *url = [NSURL URLWithString: urlString];
+    
+    if (connectionManager)
+    {
+        // stop any active requests
+        [connectionManager cancel];
+    }
+    
+    // verify that the url is valid
+    if (url != nil)
+    {
+        // create a request object from the url
+        NSURLRequest *request = [[NSURLRequest alloc] initWithURL:url];
+        
+        // verify that the request is valid
+        if (request != nil)
+        {
+            // create a new connection from the request object
+            connectionManager = [[NSURLConnection alloc] initWithRequest:request delegate:self];
+            
+            // verify that the connection object is valid
+            if (connectionManager != nil)
+            {
+                // start the connection
+                [connectionManager start];
+            }
+        }
+    }
+    
+}
+
+- (void)sortJSON
 {
     // retrieve the data array from the returned json object
-    NSArray *posts = [timelineJSON objectForKey:@"data"];
+    NSArray *rawPosts = [timelineJSON objectForKey:@"data"];
+
+    NSMutableArray *postTracker = [[NSMutableArray alloc] init];
+    NSMutableArray *dates = [[NSMutableArray alloc] init];
+    
+    // iterate over the rawposts to retrieve the created at dates
+    for (int i = 0; i < [rawPosts count]; i++)
+    {
+        // create a dictionary of the individual post data at the current index of the rawposts array
+        NSDictionary *postData = [rawPosts objectAtIndex:i];
+        
+        // get the current posts created at string date
+        NSString *postDate = [[NSString alloc] initWithString:[postData objectForKey:@"created_at"]];
+        
+        //  set the date to the index in the date array
+        dates[i] = [self getDate:postDate];
+        
+        // set the index to the index tracking array purposely matching the order of the dates for
+        // date matching later on
+        postTracker[i] = [NSNumber numberWithInt:i];
+    }
+    
+    // sort the post dates in ascending order
+    NSArray *sorts = [dates sortedArrayUsingSelector:@selector(compare:)];
+    
+    // create a mutable array for holding the sorted json post data
+    NSMutableArray *posts = [[NSMutableArray alloc] init];
+    
+    // iterate over each date in the sorted dates array to compare dates
+    for (NSDate *date in sorts)
+    {
+        // loop through the sorted dates array for comparing
+        for (int i = 0; i < [sorts count]; i++)
+        {
+            // grab the date at the i-th index of the dates array (unsorted but index tracked)
+            NSDate *dateB = [dates objectAtIndex:i];
+            
+            // check if the dates have a match
+            if ([date isEqualToDate:dateB])
+            {
+                // date match found add the post object at this index of the matched date to the post array
+                [posts addObject:rawPosts[i]];
+                
+                // set the matched date to the current date to remove from matching
+                dates[i] = [[NSDate alloc] init];
+                
+                // break out from the date matching
+                break;
+            }
+        }
+    }
+    
+    
+    // call the method to retrieve the table data from the json returned
+    [self extractJSONCellData: (NSArray *) posts];
+}
+
+- (void)extractJSONCellData:(NSArray *)posts
+{
     
     // create an empy array for holding the extracted dictionaries
     timelineDetails = [[NSMutableArray alloc] init];
@@ -252,6 +422,9 @@ typedef enum {
             {
                 details = @"";
             }
+            
+            NSDate *date = [self getDate:postCreation];
+            postCreation = [self getDateString:date format:@"EEE, MMM d, yyyy hh:mm:ss"];
             
             // add the extracted json data to the dictionary
             [postDetails setObject:post forKey:@"post_text"];
@@ -292,43 +465,61 @@ typedef enum {
            // initiate the request for downloading user avatar
            [self makeRequest:url];
        }
-
+   }
+   else
+   {
+       // dismiss the loading message
+       if (loadMsg != nil)
+       {
+           [loadMsg dismissWithClickedButtonIndex:0 animated:YES];
+           loadMsg = nil;
+       }
    }
 }
 
-- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath
+- (NSDate *)getDate:(NSString *)dateString
 {
-    int cellHeight = 80;
+    // create the date formatting object
+    DateFormatter *formatter = [[DateFormatter alloc] init];
+
+    // the date format has to be modified to properly be created into an NSDate object
+    // by removing the T & Z string formatting handles from the date string
+    NSArray *splitDate = [dateString componentsSeparatedByString:@"T"];
+    NSString *dateTime = [splitDate[1] componentsSeparatedByString:@"Z"][0];
     
-    if (textHeight > cellHeight)
+    // recreate the datestring from the two modified strings
+    NSString *newDateString = [[NSString alloc] initWithFormat:@"%@ %@", splitDate[0], dateTime];
+    NSString *format = [[NSString alloc] initWithFormat:@"YYYY-MM-dd HH:mm:ss"];
+    
+    // create a proper NSDate object from the date string with specified format
+    NSDate *date = formatter.formatDate(newDateString, format);
+    
+    return date;
+}
+                            
+- (NSString *)getDateString:(NSDate *)date format:(NSString *)format
+{
+    // create the date formatting object
+    DateFormatter *formatter = [[DateFormatter alloc] init];
+    
+    return formatter.formatDateString(date, format);
+}
+
+- (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex
+{
+    // verify that the alert is the retry alert
+    if (alertView.tag == 99)
     {
-        cellHeight += 17;
-    }
-    
-    return cellHeight;
-}
-
-- (void)scrollViewDidEndDragging:(UIScrollView *)scrollView willDecelerate:(BOOL)decelerate
-{
-    
-    // grab the scroll offset
-    float offset = scrollView.contentOffset.y;
-    
-    // if the scroll is decelerating and the pull 90pts from top, do a refresh
-    if (decelerate && offset <= -90.0f)
-    {
-        connectionType = LOADING_TIMELINE;
-        
-        // retrieve the timelined data
-        [self makeRequest:@"https://alpha-api.app.net/stream/0/posts/stream/global"];
+        // check if the button clicked is the "retry" button
+        if (buttonIndex == 1)
+        {
+            // reset the connection type
+            connectionType = LOADING_TIMELINE;
+            
+            // retrieve the timelined data
+            [self makeRequest:@"https://alpha-api.app.net/stream/0/posts/stream/global"];
+        }
     }
 }
-
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath
-{
-   
-}
-
-
 
 @end

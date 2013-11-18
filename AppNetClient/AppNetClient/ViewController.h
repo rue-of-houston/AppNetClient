@@ -9,10 +9,13 @@
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
 #import "CustomCell.h"
+#import "DateFormatter.h"
+#import "UserAlerts.h"
 
-@interface ViewController : UIViewController <UIScrollViewDelegate, UITableViewDataSource, UITableViewDelegate, NSURLConnectionDelegate>
+@interface ViewController : UIViewController <UIScrollViewDelegate, UITableViewDataSource, UITableViewDelegate, NSURLConnectionDelegate, UIAlertViewDelegate>
 {
     IBOutlet UITableView *postTable;
+    IBOutlet UILabel *pullToRefreshLabel;
     NSMutableData *timelineData;
     NSDictionary *timelineJSON;
     NSURLConnection *connectionManager;
@@ -25,10 +28,16 @@
     NSString *currentPoster;
     BOOL doRefresh;
     int textHeight;
+    UserAlerts *alert;
+    UIAlertView *loadMsg;
+    UIStoryboard *storyBoard;
     
 }
 
-- (void)makeRequest:(NSString *) urlString;
-- (void)extractJSONCellData;
+- (void)makeRequest:(NSString *)urlString;
+- (void)extractJSONCellData:(NSArray *)posts;
+- (NSDate *)getDate:(NSString *)dateString;
+- (NSString *)getDateString:(NSDate *)date format:(NSString *)format;
+- (void)sortJSON;
 
 @end
